@@ -17,35 +17,39 @@ echo -e "${CYAN}====================================================${NC}"
 echo -e "${BOLD}${YELLOW}       GOOGLE SKILLS BOOST - LAB AUTOMATOR          ${NC}"
 echo -e "${CYAN}====================================================${NC}\n"
 
-echo -e "${YELLOW}[!] Auto-detecting Lab Credentials & Regions...${NC}\n"
+# Inputs for Zones
+printf "${BOLD}${GREEN}[?] Enter ZONE 1 (e.g., europe-west1-d): ${NC}"
+read ZONE1
 
-# Auto-detect Projects
-PROJECTID1=$(gcloud config get-value project 2>/dev/null)
-PROJECTID2=$(gcloud projects list --format="value(projectId)" | filter-out "$PROJECTID1" | head -n 1)
+printf "${BOLD}${GREEN}[?] Enter ZONE 2 for Project 2 (e.g., us-west1-a): ${NC}"
+read ZONE2
 
-# Fallback Project Fetch
-if [ -z "$PROJECTID2" ]; then
-    PROJECTID2=$(gcloud projects list --format="value(projectId)" | grep -v "$PROJECTID1" | head -n 1)
-fi
+echo -e "\n${CYAN}====================================================${NC}"
+echo -e "${YELLOW}[!] Auto-detecting Projects & Credentials...${NC}"
+echo -e "${CYAN}====================================================${NC}\n"
 
-# Auto-detect Region & Zones
-ZONE1=$(gcloud config get-value compute/zone 2>/dev/null)
-REGION1=$(gcloud config get-value compute/region 2>/dev/null)
+# Extract Region 1 from Zone 1
+REGION1="${ZONE1%-*}"
 
-if [ -z "$ZONE1" ]; then ZONE1="europe-west1-d"; fi
-if [ -z "$REGION1" ]; then REGION1="europe-west1"; fi
-
-# Auto New Zone logic
+# Auto New Zone logic (Changes last letter)
 if [[ "$ZONE1" == *"-a" ]]; then ZONE1_NEW="${ZONE1%-a}-b"
 elif [[ "$ZONE1" == *"-b" ]]; then ZONE1_NEW="${ZONE1%-b}-c"
 else ZONE1_NEW="${ZONE1%-*}-a"; fi
 
+# Auto-detect Project IDs
+PROJECTID1=$(gcloud config get-value project 2>/dev/null)
+PROJECTID2=$(gcloud projects list --format="value(projectId)" | grep -v "$PROJECTID1" | head -n 1)
+
 # Auto-detect User 2
-USER1=$(gcloud config get-value account 2>/dev/null)
-USER2=$(gcloud asset search-all-resources --scope=projects/$PROJECTID2 --query="type:iam.googleapis.com/ServiceAccount" 2>/dev/null | grep -o 'student-[^"]*' | head -n 1)
+USER2=$(gcloud asset search-all-resources --scope=projects/$PROJECTID2 --query="type:iam.googleapis.com/ServiceAccount" 2>/dev/null | grep -o 'student-[^"@]*@qwiklabs\.net' | head -n 1)
+
+if [ -z "$USER2" ]; then
+    USER2=$(gcloud projects get-iam-policy "$PROJECTID2" --format="json" 2>/dev/null | jq -r '.bindings[].members[]' | grep 'student-' | grep -v "$(gcloud config get-value account 2>/dev/null)" | head -n 1 | sed 's/user://')
+fi
 
 echo -e "${CYAN}[Info] Project 1: $PROJECTID1 | Project 2: $PROJECTID2${NC}"
-echo -e "${CYAN}[Info] Zone 1: $ZONE1 | New Zone: $ZONE1_NEW${NC}\n"
+echo -e "${CYAN}[Info] Region 1: $REGION1 | Zone 1: $ZONE1 | New Zone: $ZONE1_NEW${NC}"
+echo -e "${CYAN}[Info] Zone 2: $ZONE2 | User 2: $USER2${NC}\n"
 
 # --- TASK 1 ---
 echo -e "${CYAN}[ Task 1 ] Setting environment & creating lab-1...${NC}"
@@ -88,9 +92,9 @@ echo -e "${CYAN}[ Task 6 & 7 ] Binding Admin role & creating instances (lab-2, l
 gcloud projects add-iam-policy-binding "$PROJECTID2" --member="serviceAccount:$SA" --role="roles/compute.instanceAdmin" --quiet
 
 # Create remaining instances in Project 2
-gcloud compute instances create lab-2 --project="$PROJECTID2" --zone="us-west1-a" --machine-type=e2-standard-2 --quiet
-gcloud compute instances create lab-3 --project="$PROJECTID2" --zone="us-west1-a" --machine-type=e2-standard-2 --service-account="$SA" --scopes=https://www.googleapis.com/auth/compute --quiet
-gcloud compute instances create lab-4 --project="$PROJECTID2" --zone="us-west1-a" --machine-type=e2-standard-2 --quiet
+gcloud compute instances create lab-2 --project="$PROJECTID2" --zone="$ZONE2" --machine-type=e2-standard-2 --quiet
+gcloud compute instances create lab-3 --project="$PROJECTID2" --zone="$ZONE2" --machine-type=e2-standard-2 --service-account="$SA" --scopes=https://www.googleapis.com/auth/compute --quiet
+gcloud compute instances create lab-4 --project="$PROJECTID2" --zone="$ZONE2" --machine-type=e2-standard-2 --quiet
 
 echo -e "\n${CYAN}====================================================${NC}"
 echo -e "${BOLD}${GREEN}   🎉 ALL TASKS EXECUTED SUCCESSFULLY! (100/100)    ${NC}"
